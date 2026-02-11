@@ -1,0 +1,57 @@
+# 🔐 Variables de entorno
+.env
+.env.*
+*.env
+
+# 🐍 Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 🧪 Virtual environments
+env/
+venv/
+ENV/
+.venv/
+
+# 📦 Distribución / packaging
+build/
+dist/
+*.egg-info/
+
+# 🗄 Base de datos
+db.sqlite3
+*.sqlite3
+
+# 📁 Archivos de logs
+*.log
+
+# 📂 Archivos estáticos y media generados
+media/
+staticfiles/
+
+# 🔧 Django stuff
+*.pot
+*.pyc
+local_settings.py
+
+# 🧠 VS Code
+.vscode/
+
+# 🧠 PyCharm
+.idea/
+
+# 🖥️ Sistema operativo
+.DS_Store
+Thumbs.db
+
+# 🧪 Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 📄 Archivos temporales
+*.swp
+*.swo
+
+schema.yml
