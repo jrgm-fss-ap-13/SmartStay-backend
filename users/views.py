@@ -2,14 +2,13 @@ from .models import HostProfile, User
 
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from drf_spectacular.utils import extend_schema
-from .serializers import BecomeHostResponseSerializer, CompleteProfileSerializer, HostActivationSerializer, MeResponseSerializer, MessageResponseSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer, RegisterSerializer, TokenResponseSerializer,UserSerializer,EmailTokenObtainSerializer,LogoutSerializer, UserUpdateSerializer
+from .serializers import BaseUserProfileSerializer, BecomeHostResponseSerializer, EmailVerificationSerializer, HostActivationSerializer, MeResponseSerializer, MessageResponseSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer, RegisterSerializer, TokenResponseSerializer, UserMessageResponseSerializer,UserSerializer,EmailTokenObtainSerializer,LogoutSerializer
 
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -101,23 +100,24 @@ class UserProfileView(APIView):
         tags=["Users"],
     )
     def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response({
+        data = MeResponseSerializer({
             "success": True,
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
+            "data": request.user
+        }).data
+
+        return Response(data, status=200)
 
 
 class CompleteProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        request=CompleteProfileSerializer,
+        request=BaseUserProfileSerializer,
         responses={200: MessageResponseSerializer},
         tags=["Users"],
     )
     def patch(self, request):
-        serializer = CompleteProfileSerializer(
+        serializer = BaseUserProfileSerializer(
             request.user,
             data=request.data,
             partial=False  # obligamos a enviar los 3 campos
@@ -163,12 +163,12 @@ class UpdateProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        request=UserUpdateSerializer,
-        responses=MeResponseSerializer,
+        request=BaseUserProfileSerializer,
+        responses=UserMessageResponseSerializer,
         tags=["Users"],
     )
     def patch(self, request):
-        serializer = UserUpdateSerializer(
+        serializer = BaseUserProfileSerializer(
             request.user,
             data=request.data,
             partial=True
@@ -179,8 +179,10 @@ class UpdateProfileView(APIView):
         return Response({
             "success": True,
             "message": "Profile updated successfully",
-            "data": MeResponseSerializer(request.user).data
-        })
+            "data": UserSerializer(request.user).data
+    })
+
+
         
 class RequestPasswordResetView(APIView):
     permission_classes = [AllowAny]
@@ -237,6 +239,30 @@ class PasswordResetConfirmView(APIView):
             serializer.save()
             return Response(
                 {"success": True, "message": "Password updated successfully"},
+                status=200
+            )
+
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=400
+        )
+
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        request=EmailVerificationSerializer,
+        responses=MessageResponseSerializer,
+        tags=["Auth"],
+        auth=[],
+    )
+    def post(self, request):
+        serializer = EmailVerificationSerializer(data=request.data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"success": True, "message": "Email verified successfully"},
                 status=200
             )
 

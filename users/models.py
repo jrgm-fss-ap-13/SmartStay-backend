@@ -8,6 +8,8 @@ class User(AbstractUser):
     phone = models.CharField(max_length=20, blank=True)
     profile_image = models.URLField(blank=True)
 
+    is_verified = models.BooleanField(default=False)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
 
