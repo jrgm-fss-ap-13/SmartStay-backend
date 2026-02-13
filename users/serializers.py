@@ -9,13 +9,21 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.conf import settings
 from django.core.mail import send_mail
 
-from rest_framework import serializers
-from rest_framework.fields import ValidationError
-from rest_framework_simplejwt.tokens import RefreshToken
 
-#Register
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives
+
+# Register
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        validators=[validate_password]
+    )
     password2 = serializers.CharField(write_only=True, required=True)
 
     class Meta:
@@ -24,7 +32,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password2"]:
-            raise serializers.ValidationError({"password": "Passwords do not match"})
+            raise serializers.ValidationError(
+                {"password": "Passwords do not match"}
+            )
         return attrs
 
     def create(self, validated_data):
@@ -32,23 +42,31 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User.objects.create_user(**validated_data)
         user.is_verified = False
-        user.save()
+        user.save(update_fields=["is_verified"])
 
-        # 🔐 Generar token
+        # 🔐 Generate token
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
 
-        verify_link = f"http://localhost:4200/verify-email/{uid}/{token}"
+        verify_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}"
 
-        send_mail(
-            "Verify your account",
-            f"Click here to verify your account: {verify_link}",
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=False,
+        html_content = render_to_string(
+            "emails/verify_email.html",
+            {"verify_link": verify_link}
         )
 
+        email = EmailMultiAlternatives(
+            subject="Verify your account",
+            body="Please verify your email",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[user.email],
+        )
+
+        email.attach_alternative(html_content, "text/html")
+        email.send(fail_silently=False)
+
         return user
+
 
 #Login
 class EmailTokenObtainSerializer(serializers.Serializer):
@@ -83,14 +101,16 @@ class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
     def validate(self, attrs):
-        self.token = attrs['refresh']
+        self.token = attrs.get("refresh")
+        if not self.token:
+            raise ValidationError({"refresh": "Refresh token is required"})
         return attrs
 
     def save(self, **kwargs):
         try:
             token = RefreshToken(self.token)
-            token.blacklist()  #aquí se invalida
-        except Exception:
+            token.blacklist()
+        except TokenError:
             raise ValidationError({"detail": "Invalid or expired token"})
 
 #Serializer de resetear password
@@ -134,7 +154,7 @@ class EmailVerificationSerializer(serializers.Serializer):
         try:
             uid = force_str(urlsafe_base64_decode(attrs["uid"]))
             user = User.objects.get(pk=uid)
-        except Exception:
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             raise serializers.ValidationError({"uid": "Invalid user"})
 
         if not default_token_generator.check_token(user, attrs["token"]):
@@ -154,10 +174,6 @@ class TokenResponseSerializer(serializers.Serializer):
     refresh = serializers.CharField()
     access = serializers.CharField()
 
-#Serializer de respuestas de endpoint
-class MessageResponseSerializer(serializers.Serializer):
-    success = serializers.BooleanField()
-    message = serializers.CharField()
 
 #Serializer de HOST
 class HostProfileSerializer(serializers.ModelSerializer):
@@ -196,14 +212,9 @@ class UserSerializer(serializers.ModelSerializer):
             "host_profile",
         ]
 
-    def get_is_host(self, obj):
-        return hasattr(obj, "host_profile") and obj.host_profile.is_host
+    def get_is_host(self, obj) -> bool:
+        return obj.host_profile.is_host
 
-#Serializers editar datos usuario
-class UserUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ["first_name", "last_name", "phone"]
 
 #Base de user
 class BaseUserProfileSerializer(serializers.ModelSerializer):
@@ -211,10 +222,6 @@ class BaseUserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ["first_name", "last_name", "phone"]
 
-#Serializers endpoint usuario
-class MeResponseSerializer(serializers.Serializer):
-    success = serializers.BooleanField()
-    data = UserSerializer()
 
 #Serializers endpoint usuario host
 class HostActivationSerializer(serializers.ModelSerializer):
@@ -222,13 +229,22 @@ class HostActivationSerializer(serializers.ModelSerializer):
         model = HostProfile
         fields = ["description", "phone", "profession"]
 
-#serializers endpoint usuario host
-class BecomeHostResponseSerializer(serializers.Serializer):
-    success = serializers.BooleanField()
-    message = serializers.CharField()
-    data = HostActivationSerializer()
 
-class UserMessageResponseSerializer(serializers.Serializer):
+class BaseResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
-    message = serializers.CharField()
+    message = serializers.CharField(required=False, allow_blank=True, default="")
+
+class DataResponseSerializer(BaseResponseSerializer):
+    data = serializers.JSONField(required=False)
+
+
+class UserResponseSerializer(BaseResponseSerializer):
     data = UserSerializer()
+
+class HostResponseSerializer(BaseResponseSerializer):
+    data = HostActivationSerializer(required=False)
+
+class ErrorResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField(default=False)
+    errors = serializers.JSONField()
+    status_code = serializers.IntegerField()
