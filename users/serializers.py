@@ -48,6 +48,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
 
+        print(uid)
+        print(token)
         verify_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}"
 
         html_content = render_to_string(
@@ -144,6 +146,25 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         user.save()
 
         return user
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        validators=[validate_password]
+    )
+    new_password2 = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password2"]:
+            raise serializers.ValidationError(
+                {"new_password": "Passwords do not match"}
+            )
+        return attrs
+
 
 #Confirmar cuenta correo al email
 class EmailVerificationSerializer(serializers.Serializer):

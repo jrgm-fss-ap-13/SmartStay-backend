@@ -16,6 +16,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from drf_spectacular.utils import extend_schema,extend_schema_view,OpenApiResponse
+from django.contrib.auth import update_session_auth_hash
 
 from django.template.loader import render_to_string
 from django.core.mail import EmailMultiAlternatives
@@ -334,6 +335,7 @@ class PasswordResetConfirmView(APIView):
         )
 
 class VerifyEmailView(APIView):
+    
     permission_classes = [AllowAny]
 
     @extend_schema(
@@ -356,4 +358,44 @@ class VerifyEmailView(APIView):
         return Response(
             {"success": True, "message": "Email verified successfully"},
             status=status.HTTP_200_OK
+        )
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=ChangePasswordSerializer,
+        responses={
+            200: BaseResponseSerializer,
+            400: OpenApiResponse(
+                response=ErrorResponseSerializer,
+                description="Validation error."
+            ),
+        },
+        tags=["Auth"],
+    )
+    def post(self, request):
+
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+
+        # 🔐 Validar contraseña actual
+        if not user.check_password(serializer.validated_data["current_password"]):
+            return Response(
+                {"success": False, "message": "Current password is incorrect"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 🔄 Cambiar contraseña
+        user.set_password(serializer.validated_data["new_password"])
+        user.save()
+
+        # 🔒 Mantener sesión activa
+        update_session_auth_hash(request, user)
+
+        return Response(
+            {"success": True, "message": "Password changed successfully"},
+            status=status.HTTP_200_OK,
         )
