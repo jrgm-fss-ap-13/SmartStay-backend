@@ -1,5 +1,5 @@
 
-from .models import HostProfile, User
+from .models import HostProfile, HostReview, User
 
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import authenticate
@@ -50,7 +50,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         print(uid)
         print(token)
-        verify_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}"
+        verify_link = f"{settings.FRONTEND_URL}/{uid}/{token}"
+        print(verify_link)
+        print("Sending verification email to:",verify_link)
 
         html_content = render_to_string(
             "emails/verify_email.html",
@@ -79,7 +81,10 @@ class EmailTokenObtainSerializer(serializers.Serializer):
         email = attrs.get("email")
         password = attrs.get("password")
 
-        user = authenticate(request=self.context.get('request'), username=email, password=password)
+        user = User.objects.filter(email=email).first()
+
+        if user:
+            user = authenticate(username=user.email, password=password)
 
         if not user:
             raise serializers.ValidationError({
@@ -198,6 +203,9 @@ class TokenResponseSerializer(serializers.Serializer):
 
 #Serializer de HOST
 class HostProfileSerializer(serializers.ModelSerializer):
+
+    average_rating = serializers.FloatField(read_only=True)
+
     class Meta:
         model = HostProfile
         fields = [
@@ -208,6 +216,7 @@ class HostProfileSerializer(serializers.ModelSerializer):
             "profession",
             "rating",
             "total_reviews",
+            "average_rating",
         ]
         read_only_fields = [
             "is_host",
@@ -234,7 +243,7 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_host(self, obj) -> bool:
-        return obj.host_profile.is_host
+        return hasattr(obj, "host_profile") and obj.host_profile.is_host
 
 
 #Base de user
@@ -265,7 +274,32 @@ class UserResponseSerializer(BaseResponseSerializer):
 class HostResponseSerializer(BaseResponseSerializer):
     data = HostActivationSerializer(required=False)
 
+
 class ErrorResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField(default=False)
     errors = serializers.JSONField()
     status_code = serializers.IntegerField()
+
+class HostReviewSerializer(serializers.ModelSerializer):
+
+    reviewer = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+    class Meta:
+        model = HostReview
+        fields = [
+            "id","host","reviewer","rating","comment","created_at",
+        ]
+
+        read_only_fields = ["id","reviewer","created_at",
+        ]
+
+    def validate(self, attrs):
+        reviewer = attrs["reviewer"]
+        host = attrs["host"]
+
+        if reviewer == host.user:
+            raise serializers.ValidationError(
+                "You cannot review yourself"
+            )
+
+        return attrs

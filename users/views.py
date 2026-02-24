@@ -1,3 +1,4 @@
+from rest_framework.generics import CreateAPIView, ListAPIView
 from .serializers import *
 
 from django.contrib.auth import get_user_model
@@ -71,8 +72,8 @@ class RegisterView(APIView):
         serializer.save()
 
         return Response(
-            {"success": True, "message": "User registered successfully"},
-            status=status.HTTP_201_CREATED,
+            {"success": True, "message": "User registered successfully",},
+            status=status.HTTP_201_CREATED
         )
 
 class EmailLoginView(APIView):
@@ -399,3 +400,19 @@ class ChangePasswordView(APIView):
             {"success": True, "message": "Password changed successfully"},
             status=status.HTTP_200_OK,
         )
+
+class CreateHostReviewView(CreateAPIView):
+
+    serializer_class = HostReviewSerializer
+
+    permission_classes = [IsAuthenticated]
+
+class HostReviewListView(ListAPIView):
+
+    serializer_class = HostReviewSerializer
+    permission_classes = [AllowAny]
+
+
+    def get_queryset(self):
+        host_id = self.kwargs["host_id"]
+        return HostReview.objects.filter(host_id=host_id).select_related("reviewer")
